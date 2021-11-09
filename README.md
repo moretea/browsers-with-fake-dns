@@ -9,7 +9,7 @@ Look no further!
 ```
 docker build -t browsers .
 
-docker run  --rm --name browsers -p 8080:8080 -v $PWD/data:/data -v $PWD/example.zone.conf:/data/zone.conf:ro browsers
+docker run  --rm --name browsers -p 8080:8080 -v $PWD/data:/data -v $PWD/zone.yaml:/data/zone.yaml:ro browsers
 # this starts the container and stores the home dir of the user on your system, so that you'll have a browser history, cookies, shell history etc.
 ```
 
