@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+import socket
+import time
+import textwrap
+import yaml
+import subprocess
+
+my_hostname = socket.gethostname()
+my_ip = socket.gethostbyname(my_hostname)
+
+def apply_config(config):
+	primary_name_server = f"ns.{my_hostname}."
+	hostmaster_email = "email.example.com."
+	serial_number = int(time.time())
+	time_to_retry = time_to_refresh = time_to_expire = minimum_TTL = 1
+
+	for tld, zone in config["zones"].items():
+		zone_db_file = f"/etc/bind/db.{tld}"
+
+		with open("/etc/bind/named.conf.local", "w") as f:
+			f.write(textwrap.dedent(f"""
+				zone "{tld}" {{
+					type master;
+					file "{zone_db_file}";
+				}};
+			"""))
+		with open(zone_db_file, "w") as f:
+			f.write(f"$ORIGIN {tld}.\n")
+			f.write(f"$TTL 604800\n")
+			f.write(f"@\tIN\tSOA\t{primary_name_server}\t{hostmaster_email} (\n")
+			f.write(f"\t\t\t{serial_number}\n")
+			f.write(f"\t\t\t{time_to_refresh}\n")
+			f.write(f"\t\t\t{time_to_retry}\n")
+			f.write(f"\t\t\t{time_to_expire}\n")
+			f.write(f"\t\t\t{minimum_TTL})\n")
+			f.write(f";\n")
+			f.write(f"@\tIN\tNS\t{tld}.\n")
+			for record in zone["records"]:
+				parts = [record["name"], str(record["ttl"]), "IN", record["type"], record["data"]]
+				f.write("\t".join(parts)+"\n")
+		with open("/etc/resolv.conf", "w") as f:
+			f.write("nameserver 127.0.0.1\n")
+	subprocess.run(["supervisorctl", "restart", "bind"])
+
+old_config = None
+while True:
+	with open("/data/zone.yaml") as f:
+		new_config = f.read()
+		if new_config == old_config:
+			print("No change in DNS config")
+			time.sleep(10)
+			continue
+		else:
+			print("Applying DNS zone change")
+			apply_config(yaml.safe_load(new_config))
+			old_config = new_config
